@@ -18,4 +18,4 @@
 - 编译：mkdir build && cd build && cmake .. && make
 - 运行：./app
 - 推流地址默认：rtmp://127.0.0.1/live/app，可修改源码中的rtmp_url
-- 观看：在PC端使用ffplay或VLC打开同样的rtmp地址
+- 观看：在PC端使用ffplay打开同样的rtmp地址
