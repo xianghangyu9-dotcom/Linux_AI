@@ -47,6 +47,7 @@ class Yolov5s
 
     private:
         unsigned char* model_data;
+        unsigned char* resize_buf;
         int model_data_size;
         unsigned char * load_model(const char *file_name,int *model_size);
         unsigned char * load_data(FILE *fp,size_t ofst,size_t sz);

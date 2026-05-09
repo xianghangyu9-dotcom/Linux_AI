@@ -88,8 +88,7 @@ Yolov5s::Yolov5s(const char *model_path)
         model_width = input_attrs[0].dims[2];
         model_channel = input_attrs[0].dims[3];
     }
-
-
+    this->resize_buf = (unsigned char*)malloc(model_width * model_height * 3);
 }
 
 
@@ -100,6 +99,7 @@ Yolov5s::~Yolov5s()
     {
         free(model_data);
     }
+    if(this->resize_buf) free(this->resize_buf);
 }
 
 unsigned char * Yolov5s::load_model(const char *file_name,int *model_size)
@@ -162,25 +162,33 @@ int Yolov5s::inference_imge(const cv::Mat &orig_img,detect_result_group_t &group
     this->img_channel   = orig_img.channels();
     
     //预处理
-    cv::Mat img_rgb, img_resize;
-    cvtColor(orig_img, img_rgb, cv::COLOR_BGR2RGB);
-    resize(img_rgb, img_resize, cv::Size(model_width, model_height));
+    rga_buffer_t src = wrapbuffer_virtualaddr((void*)orig_img.data, orig_img.cols, orig_img.rows, RK_FORMAT_BGR_888);
+    rga_buffer_t dst = wrapbuffer_virtualaddr((void*)this->resize_buf, model_width, model_height, RK_FORMAT_RGB_888);
+
+    ret = improcess(src, dst, {}, {}, {}, {}, IM_SYNC); 
+    if (ret < 0) {
+        printf("RGA Process error!\n");
+        // 如果 RGA 失败，降级使用 OpenCV
+        cv::Mat img_rgb, img_resize;
+        cv::cvtColor(orig_img, img_rgb, cv::COLOR_BGR2RGB);
+        cv::resize(img_rgb, img_resize, cv::Size(model_width, model_height));
+        memcpy(this->resize_buf, img_resize.data, model_width * model_height * 3);
+    }
 
     //推理
     //input初始化
     int inputs_num = io_num.n_input;
     rknn_input inputs[inputs_num];
-    memset(inputs,0,sizeof(inputs));
-    inputs[0].index         = 0;
-    inputs[0].type          = RKNN_TENSOR_UINT8;
-    inputs[0].size          = model_height * model_width *model_channel;
-    inputs[0].pass_through  = false;
-    inputs[0].fmt           = RKNN_TENSOR_NHWC;
-    inputs[0].buf           = img_resize.data;      
+    memset(inputs, 0, sizeof(inputs));
+    inputs[0].index = 0;
+    inputs[0].type = RKNN_TENSOR_UINT8;
+    inputs[0].size = model_height * model_width * 3;
+    inputs[0].fmt = RKNN_TENSOR_NHWC;
+    inputs[0].buf = this->resize_buf; // 使用硬件加速处理后的数据
 
-    ret = rknn_inputs_set(ctx,inputs_num,inputs); 
+    rknn_inputs_set(ctx, 1, inputs);
     ret = rknn_run(ctx, NULL);
-    
+
     //output初始化
     //printf("set output...\n");
     int outputs_num = io_num.n_output;

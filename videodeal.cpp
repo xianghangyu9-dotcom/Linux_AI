@@ -44,11 +44,11 @@ struct buf_app
 
 ThreadPool thread_pool(MODEL_PATH,2);
 
-SafeQueue<FrameData> ReadFrameQueue(30); 
-//SafeQueue<FrameData> WriteFrameQueue(50);
-SafeQueue<vector<uchar>> StreamQueue(50);
+SafeQueue<FrameData> ReadFrameQueue(4); 
+//SafeQueue<FrameData> WriteFrameQueue(30);
+SafeQueue<Mat> StreamQueue(5);
 
-void read_function(int fd,vector<buf_app>& buf_a,SafeQueue<FrameData>& img_queue,int& img_index)
+void read_function(int fd,vector<buf_app>& buf_a,SafeQueue<FrameData>& r_queue,int& img_index)
 {
     int ret = 0;
 
@@ -59,52 +59,51 @@ void read_function(int fd,vector<buf_app>& buf_a,SafeQueue<FrameData>& img_queue
         struct pollfd poll_fd[1];
         poll_fd[0].fd = fd;
         poll_fd[0].events = POLLIN;
-        for(int i = 0;i<4;i++)
+
+        poll(poll_fd,1,500);
+
+        v4l2_buffer buf;
+        memset(&buf,0,sizeof(buf));
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+
+        ret = ioctl(fd,VIDIOC_DQBUF,&buf);
+        if(ret < 0)
         {
-            poll(poll_fd,1,2000);
-            v4l2_buffer buf;
-            memset(&buf,0,sizeof(buf));
-            buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-            buf.memory = V4L2_MEMORY_MMAP;
-            ret = ioctl(fd,VIDIOC_DQBUF,&buf);
-            if(ret < 0)
-            {
-                perror("dequeue buffer");
-                break;
-            }
+            perror("dequeue buffer");
+            break;
+        }
 
-            char filename[20];
-            snprintf(filename,sizeof(filename),"picture-%d.jpg",img_index);
-            
-            vector<uchar>encoded((uchar*)buf_a[buf.index].start,(uchar*)buf_a[buf.index].start + buf.bytesused);//取出起始地址到终止地址内的内容
-            frame_temp.frame = imdecode(encoded,IMREAD_COLOR);  //对取出部分解码
+        // char filename[20];
+        // snprintf(filename,sizeof(filename),"picture-%d.jpg",img_index);
+        
+        vector<uchar>encoded((uchar*)buf_a[buf.index].start,(uchar*)buf_a[buf.index].start + buf.bytesused);
+        frame_temp.frame = imdecode(encoded,IMREAD_COLOR); 
+        
+        if(!frame_temp.frame.empty())
+        {
+            //imwrite(filename,frame_temp.frame); //测试
+            frame_temp.index = img_index;
+            r_queue.enqueue(frame_temp); 
+            img_index++;
+        }
+        else
+        {
+            printf("frame is empty\n");
+            break;
+        }
 
-            if(!frame_temp.frame.empty())
-            {
-                //imwrite(filename,frame_temp.frame); //测试用
-                frame_temp.index = img_index;
-                img_queue.enqueue(frame_temp);  //将读取的视频帧push到读队列
-                img_index++;
-            }
-            else
-            {
-                printf("frame is empty\n");
-                break;
-            }
-
-            ret = ioctl(fd,VIDIOC_QBUF,&buf);
-            if(ret < 0)
-            {
-                perror("queue buffer");
-                break;
-            }
-
+        ret = ioctl(fd,VIDIOC_QBUF,&buf);
+        if(ret < 0)
+        {
+            perror("queue buffer");
+            break;
         }
     }
     printf("read end!\r\n");
 }
 
-void process_function(SafeQueue<FrameData>& r_queue, SafeQueue<vector<uchar>>& s_queue, bool& read_finished, bool& process_finished)
+void process_function(SafeQueue<FrameData>& r_queue, SafeQueue<Mat>& s_queue, bool& read_finished, bool& process_finished)
 {
     int send_index = 0;
     int recv_index = 0;
@@ -125,12 +124,9 @@ void process_function(SafeQueue<FrameData>& r_queue, SafeQueue<vector<uchar>>& s
         if(thread_pool.is_result_ready(recv_index))
         {
             Mat res;
-            vector<uchar> jpeg_buf;
             thread_pool.get_result(res, recv_index);
             //w_queue.enqueue({res, recv_index});
-            imencode(".jpg",res,jpeg_buf,{IMWRITE_JPEG_QUALITY,85});
-            res.release();
-            s_queue.enqueue(jpeg_buf);
+            s_queue.enqueue(res);
             if (recv_index % 100 == 0) printf("process index %d finished!\n", recv_index);
             recv_index++;
             has_work = true;
@@ -145,15 +141,14 @@ void process_function(SafeQueue<FrameData>& r_queue, SafeQueue<vector<uchar>>& s
         if (!has_work) {
             this_thread::sleep_for(chrono::milliseconds(1));
         }
-        usleep(1000);
     }
     printf("process end!\n");
 }
 
-void stream_function(SafeQueue<vector<uchar>>& s_queue,bool& process_finished,const string& rtmp_url)
+void stream_function(SafeQueue<Mat>& s_queue,bool& process_finished,const string& rtmp_url)
 {
-    string cmd = "ffmpeg -f image2pipe -c:v mjpeg -i - "
-                      "-probesize 32 -fflags nobuffer -framerate 30 -c:v h264_rkmpp -b:v 2M -f flv " + rtmp_url;
+    string cmd = "ffmpeg -f rawvideo -pixel_format bgr24 -video_size 1280x720 -framerate 30 -i - "
+                 "-c:v h264_rkmpp -b:v 2M -f flv " + rtmp_url;
     FILE* pipe = popen(cmd.c_str(), "w");
     if (!pipe) {
         printf("Failed to start FFmpeg\n");
@@ -161,20 +156,17 @@ void stream_function(SafeQueue<vector<uchar>>& s_queue,bool& process_finished,co
     }
 
     while (true) {
-        vector<uchar> jpeg_data;
+        Mat frame;
         if (!s_queue.empty()) {
-            s_queue.dequeue(jpeg_data);
-            fwrite(jpeg_data.data(), 1, jpeg_data.size(), pipe);
-            fflush(pipe);
-            jpeg_data.clear();
+            s_queue.dequeue(frame);
+            fwrite(frame.data, 1, frame.total() * frame.elemSize(), pipe);
+            //fflush(pipe);
         } else if (process_finished) {
             break;
         }
-        this_thread::sleep_for(chrono::milliseconds(1));
     }
 
-    pclose(pipe);  // 结束推流
-    printf("RTMP stream ended\n");
+    pclose(pipe);
 }
 
 // void write_fuction(VideoWriter& writer,SafeQueue<FrameData>& img_queue,bool& process_finished)
@@ -236,7 +228,7 @@ int main(void){
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width = 1280;
     fmt.fmt.pix.height = 720;
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG; 
+    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
     ret = ioctl(fd,VIDIOC_S_FMT,&fmt);
     if(ret < 0)
