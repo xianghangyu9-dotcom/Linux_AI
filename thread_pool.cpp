@@ -24,20 +24,25 @@ ThreadPool::~ThreadPool()
 
 }
 
-//为worker创建多线程
 int ThreadPool::init(const char *model_path,int num_threads)
 {
     if(!num_threads)
     {
         return -1;
     }
-    for(size_t i=0;i<num_threads;i++)
-    {
-        shared_ptr<Yolov5s> yolov5s = make_shared<Yolov5s>(model_path);
-        yolo_group.emplace_back(yolov5s);
-        threads.emplace_back(&ThreadPool::worker,this,i);   
-    }
+    
+    for(size_t i = 0; i < num_threads; i++) {
+        rknn_core_mask mask;
+        if (i % 3 == 0) mask = RKNN_NPU_CORE_0;
+        else if (i % 3 == 1) mask = RKNN_NPU_CORE_1;
+        else mask = RKNN_NPU_CORE_2;
+        //rknn_core_mask mask = RKNN_NPU_CORE_AUTO;
 
+        // 创建Yolov5s实例并绑定核心
+        shared_ptr<Yolov5s> yolov5s = make_shared<Yolov5s>(model_path, mask);
+        yolo_group.emplace_back(yolov5s);
+        threads.emplace_back(&ThreadPool::worker, this, i);
+    }
     printf("ThreadPool is ok\r\n");
     return 0;
 }
@@ -52,7 +57,6 @@ void ThreadPool::worker(int index)
             unique_lock<mutex> lock(task_mtx);
             task_cond.wait(lock,[&]{return (!tasks.empty() || !run);}); 
 
-            //run=false分支
             if(!run)
             {
                 printf("worker%d is relaxing!\r\n",index);

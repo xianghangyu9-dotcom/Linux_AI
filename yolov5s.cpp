@@ -13,42 +13,37 @@ static void print_tensor_attr(rknn_tensor_attr &attr)
         attr.index,attr.name,attr.n_dims,shape_str.c_str(),attr.size,get_format_string(attr.fmt),attr.scale,attr.zp);
 }   
 
-Yolov5s::Yolov5s(const char *model_path)
+//Yolov5s::Yolov5s(const char *model_path)
+Yolov5s::Yolov5s(const char *model_path, rknn_core_mask core_mask)
 {
     int ret;
 
     this->model_data_size = 0;
     this->model_data      = load_model(model_path,&this->model_data_size);
 
-    ret                   = rknn_init(&this->ctx,model_data,model_data_size,RKNN_FLAG_PRIOR_HIGH,NULL);
-
+    ret                   = rknn_init(&this->ctx, model_data, model_data_size, 0, NULL);
+    ret                   = rknn_set_core_mask(this->ctx, core_mask);
     if(ret<0)
     {
         printf("model_init failed,error code = %d\n",ret);
     }
-
     else
     {
         printf("model init is ok\n");
     }
 
-    //调用npu
-    rknn_core_mask core_mask;
-    core_mask = RKNN_NPU_CORE_AUTO;
-
     //rknn_query查询版本和驱动
     rknn_query(ctx,RKNN_QUERY_SDK_VERSION,&this->version,sizeof(this->version));
-    //printf("sdk version : %s ,driver version : %s\n",version.api_version,version.drv_version);  //查询用的结构体
+    //printf("sdk version : %s ,driver version : %s\n",version.api_version,version.drv_version); 
 
-    //查询num
     ret = rknn_query(ctx,RKNN_QUERY_IN_OUT_NUM,&this->io_num,sizeof(this->io_num));
     if(ret<0)
     {
         printf("get io num failed\n");
     }
-    //printf("input num: %d,output num: %d\n",io_num.n_input,io_num.n_output); //输入和输出的固定后缀
+    //printf("input num: %d,output num: %d\n",io_num.n_input,io_num.n_output);
 
-    //根据数量num获取input/output的tensor attributes,属性获取
+
     input_attrs.resize(io_num.n_input);
     output_attrs.resize(io_num.n_output);
 
