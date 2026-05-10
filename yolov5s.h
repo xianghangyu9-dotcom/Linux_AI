@@ -23,7 +23,8 @@ using namespace std;
 class Yolov5s
 {
     public:
-        Yolov5s(const char *model_path);
+        //Yolov5s(const char *model_path);
+        Yolov5s(const char *model_path, rknn_core_mask core_mask);
         ~Yolov5s();
         int inference_imge(const cv::Mat &orig_img,detect_result_group_t &group);
         int draw_result(cv::Mat &orig_img,detect_result_group_t &group);

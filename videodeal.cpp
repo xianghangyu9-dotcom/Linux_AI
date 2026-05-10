@@ -42,11 +42,11 @@ struct buf_app
     size_t length;
 };
 
-ThreadPool thread_pool(MODEL_PATH,2);
+ThreadPool thread_pool(MODEL_PATH,3);
 
-SafeQueue<FrameData> ReadFrameQueue(4); 
+SafeQueue<FrameData> ReadFrameQueue(6); 
 //SafeQueue<FrameData> WriteFrameQueue(30);
-SafeQueue<Mat> StreamQueue(5);
+SafeQueue<Mat> StreamQueue(6);
 
 void read_function(int fd,vector<buf_app>& buf_a,SafeQueue<FrameData>& r_queue,int& img_index)
 {
