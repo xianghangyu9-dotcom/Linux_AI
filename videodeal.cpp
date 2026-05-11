@@ -42,11 +42,11 @@ struct buf_app
     size_t length;
 };
 
-ThreadPool thread_pool(MODEL_PATH,3);
+ThreadPool thread_pool(MODEL_PATH,12);
 
-SafeQueue<FrameData> ReadFrameQueue(6); 
+SafeQueue<FrameData> ReadFrameQueue(16); 
 //SafeQueue<FrameData> WriteFrameQueue(30);
-SafeQueue<Mat> StreamQueue(6);
+SafeQueue<Mat> StreamQueue(30);
 
 void read_function(int fd,vector<buf_app>& buf_a,SafeQueue<FrameData>& r_queue,int& img_index)
 {
@@ -107,12 +107,14 @@ void process_function(SafeQueue<FrameData>& r_queue, SafeQueue<Mat>& s_queue, bo
 {
     int send_index = 0;
     int recv_index = 0;
+    static auto last_progress_time = chrono::steady_clock::now();
+    const int TIMEOUT_MS = 3000;
 
     while(true) 
     {
         bool has_work = false;
 
-        if(!r_queue.empty()) {
+        if(thread_pool.get_result_count() < 36 && !r_queue.empty()) {
             FrameData f;
             r_queue.dequeue(f); 
             thread_pool.submit_task(f.frame, f.index);
@@ -129,7 +131,16 @@ void process_function(SafeQueue<FrameData>& r_queue, SafeQueue<Mat>& s_queue, bo
             s_queue.enqueue(res);
             if (recv_index % 100 == 0) printf("process index %d finished!\n", recv_index);
             recv_index++;
+            last_progress_time = chrono::steady_clock::now();
             has_work = true;
+        }
+        else 
+        {
+            auto now = chrono::steady_clock::now();
+            if (chrono::duration_cast<chrono::milliseconds>(now - last_progress_time).count() > TIMEOUT_MS) 
+            {
+                printf("Frame %d timeout, skipping\n", recv_index);
+            }
         }
 
         if (read_finished && r_queue.empty() && recv_index >= send_index && send_index > 0)
@@ -147,8 +158,8 @@ void process_function(SafeQueue<FrameData>& r_queue, SafeQueue<Mat>& s_queue, bo
 
 void stream_function(SafeQueue<Mat>& s_queue,bool& process_finished,const string& rtmp_url)
 {
-    string cmd = "ffmpeg -f rawvideo -pixel_format bgr24 -video_size 1280x720 -framerate 30 -i - "
-                 "-c:v h264_rkmpp -b:v 2M -f flv " + rtmp_url;
+    string cmd = "ffmpeg -f rawvideo -pixel_format bgr24 -video_size 1280x720 -framerate 120 -i - "
+                 "-c:v h265_rkmpp -b:v 2M -f flv " + rtmp_url;
     FILE* pipe = popen(cmd.c_str(), "w");
     if (!pipe) {
         printf("Failed to start FFmpeg\n");
@@ -241,7 +252,7 @@ int main(void){
     memset(&streamparm, 0, sizeof(streamparm));
     streamparm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     streamparm.parm.capture.timeperframe.numerator = 1;
-    streamparm.parm.capture.timeperframe.denominator = 30;
+    streamparm.parm.capture.timeperframe.denominator = 120;
     //int fps =  streamparm.parm.capture.timeperframe.denominator;
     ret = ioctl(fd, VIDIOC_S_PARM,&streamparm); 
     if(ret < 0)

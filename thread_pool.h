@@ -23,6 +23,7 @@ class   ThreadPool
         int get_result(Mat& img,int index);
         queue<pair<int,Mat>> tasks;
         bool is_result_ready(int index); 
+        int get_result_count();
 
     private:
         vector<shared_ptr<Yolov5s>> yolo_group;
