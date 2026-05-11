@@ -73,7 +73,13 @@ void ThreadPool::worker(int index)
         yolo->draw_result(task.second,group);
 
         {
-            lock_guard<mutex> lock(res_mtx);
+            unique_lock<mutex> lock(res_mtx);
+            while (img_results.size() > 40) 
+            {
+                lock.unlock();
+                this_thread::sleep_for(chrono::milliseconds(1));
+                lock.lock();
+            }
             img_results.insert({task.first,task.second});  
         }
     }
@@ -81,19 +87,17 @@ void ThreadPool::worker(int index)
 
 int ThreadPool::submit_task(const Mat& img,int index)
 {
-    while(tasks.size() > 5)
+    while(tasks.size() > 36)
     {
         this_thread::sleep_for(chrono::milliseconds(1));
     }
 
-    //保存任务
     {
         lock_guard<mutex> lock(task_mtx);
         tasks.push({index,img});
     }
     task_cond.notify_one();
     return 0;
-
 }
 
 int ThreadPool::get_result(Mat& img,int index)
