@@ -140,6 +140,8 @@ void process_function(SafeQueue<FrameData>& r_queue, SafeQueue<Mat>& s_queue, bo
             if (chrono::duration_cast<chrono::milliseconds>(now - last_progress_time).count() > TIMEOUT_MS) 
             {
                 printf("Frame %d timeout, skipping\n", recv_index);
+                recv_index++;
+                last_progress_time = now;
             }
         }
 
