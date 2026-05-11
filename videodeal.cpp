@@ -44,9 +44,9 @@ struct buf_app
 
 ThreadPool thread_pool(MODEL_PATH,12);
 
-SafeQueue<FrameData> ReadFrameQueue(12); 
+SafeQueue<FrameData> ReadFrameQueue(16); 
 //SafeQueue<FrameData> WriteFrameQueue(30);
-SafeQueue<Mat> StreamQueue(100);
+SafeQueue<Mat> StreamQueue(30);
 
 void read_function(int fd,vector<buf_app>& buf_a,SafeQueue<FrameData>& r_queue,int& img_index)
 {
@@ -114,7 +114,7 @@ void process_function(SafeQueue<FrameData>& r_queue, SafeQueue<Mat>& s_queue, bo
     {
         bool has_work = false;
 
-        if(!r_queue.empty()) {
+        if(thread_pool.get_result_count() < 36 && !r_queue.empty()) {
             FrameData f;
             r_queue.dequeue(f); 
             thread_pool.submit_task(f.frame, f.index);
