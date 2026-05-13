@@ -181,7 +181,7 @@ int Yolov5s::inference_imge(const cv::Mat &orig_img,detect_result_group_t &group
     inputs[0].fmt = RKNN_TENSOR_NHWC;
     inputs[0].buf = this->resize_buf; // 使用硬件加速处理后的数据
 
-    rknn_inputs_set(ctx, 1, inputs);
+    rknn_inputs_set(ctx, inputs_num, inputs);
     ret = rknn_run(ctx, NULL);
 
     //output初始化
