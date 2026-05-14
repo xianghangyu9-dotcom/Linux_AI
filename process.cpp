@@ -239,7 +239,7 @@ float nms_threshold,float scale_w,float scale_h,vector<int32_t> &qnt_zps,vector<
     int validcount = validcount0 + validcount1 + validcount2;
     if(validcount < 0)
     {
-        return 0;
+        return -1;
     }
     
     vector<probarray> pro_arr;
