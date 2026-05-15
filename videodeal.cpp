@@ -173,7 +173,7 @@ void stream_function(SafeQueue<Mat>& s_queue,bool& process_finished,const string
         if (!s_queue.empty()) {
             s_queue.dequeue(frame);
             fwrite(frame.data, 1, frame.total() * frame.elemSize(), pipe);
-            //fflush(pipe);
+            fflush(pipe);
         } else if (process_finished) {
             break;
         }
