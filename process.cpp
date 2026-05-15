@@ -86,7 +86,7 @@ static int nms(int validcount,vector<float>& boxes,vector<int>& classid,vector<i
 {
     for(int i=0; i < validcount; i++)
     {
-        if(index[i] == -1 || classid[i] != current_class)
+        if(index[i] == -1 || classid[index[i]] != current_class)
         {
             continue;
         }
@@ -97,7 +97,7 @@ static int nms(int validcount,vector<float>& boxes,vector<int>& classid,vector<i
         for(int j = i+1; j < validcount; j++)
         {
             int m = index[j];
-            if(m == -1 || classid[j] != current_class)
+            if(m == -1 || classid[index[j]] != current_class)
             {
                 continue;
             } 
@@ -115,7 +115,7 @@ static int nms(int validcount,vector<float>& boxes,vector<int>& classid,vector<i
 
             if(iou > nms_thres)
             {
-                index[i]=-1; 
+                index[j]=-1; 
             }
         }
     }
